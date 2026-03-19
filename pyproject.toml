@@ -1,0 +1,32 @@
+[project]
+name = "dart-xbrl-pipeline"
+version = "0.1.0"
+description = "OpenDART XBRL 기반 재무제표 및 주석 분석 파이프라인"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.28.0",
+  "pandas>=2.2.0",
+  "pydantic>=2.8.0",
+  "pytest>=8.0.0",
+  "python-dotenv>=1.0.1",
+  "PyYAML>=6.0.2",
+  "beautifulsoup4>=4.12.3",
+  "lxml>=5.3.0",
+  "tenacity>=9.0.0",
+  "typer>=0.15.1",
+  "rich>=13.9.4"
+]
+
+[project.scripts]
+dart-xbrl = "dart_xbrl_pipeline.cli:app"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

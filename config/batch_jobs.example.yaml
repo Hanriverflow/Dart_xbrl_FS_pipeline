@@ -1,0 +1,22 @@
+max_workers: 4
+retry_failed: true
+jobs:
+  - corp_name: 하나마이크론
+    corp_code: "00286846"
+    date: "2025-12-31"
+    report_type: annual
+
+  - corp_name: 삼성전자
+    corp_code: "00126380"
+    date: "2025-06-30"
+    report_type: semiannual
+
+  - corp_name: LG에너지솔루션
+    corp_code: "01390338"
+    date: "2025-03-31"
+    report_type: q1
+
+  - corp_name: SK하이닉스
+    corp_code: "00164779"
+    date: "2025-09-30"
+    report_type: q3

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:ifrs-full="http://xbrl.ifrs.org/taxonomy/2021-03-24/ifrs-full">
+  <ifrs-full:Revenue contextRef="CFYConsolidatedMember" unitRef="KRW">100000000</ifrs-full:Revenue>
+</xbrli:xbrl>

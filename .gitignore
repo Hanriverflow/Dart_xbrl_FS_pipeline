@@ -1,0 +1,27 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+data/raw/*
+data/parsed/*
+reports/*
+!data/raw/.gitkeep
+!data/parsed/.gitkeep
+!reports/.gitkeep
+
+# Caches and temporary files
+.cache/
+.pytest_cache/
+.ruff_cache/
+.tmp/
+
+# Build directories
+dist/
+
+# Generated reports in root
+report_*.md
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,2 @@
+[console_scripts]
+dart-xbrl = dart_xbrl_pipeline.cli:app

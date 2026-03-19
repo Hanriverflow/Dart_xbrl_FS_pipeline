@@ -1,0 +1,10 @@
+report_name_keywords:
+  annual:
+    - "사업보고서"
+reprt_codes:
+  annual: "11011"
+analysis:
+  profitability_keywords:
+    revenue_mix:
+      - "매출"
+      - "수익"

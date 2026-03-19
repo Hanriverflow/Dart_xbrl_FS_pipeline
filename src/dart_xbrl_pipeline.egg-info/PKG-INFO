@@ -1,0 +1,203 @@
+Metadata-Version: 2.4
+Name: dart-xbrl-pipeline
+Version: 0.1.0
+Summary: OpenDART XBRL 기반 재무제표 및 주석 분석 파이프라인
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: httpx>=0.28.0
+Requires-Dist: pandas>=2.2.0
+Requires-Dist: pydantic>=2.8.0
+Requires-Dist: pytest>=8.0.0
+Requires-Dist: python-dotenv>=1.0.1
+Requires-Dist: PyYAML>=6.0.2
+Requires-Dist: beautifulsoup4>=4.12.3
+Requires-Dist: lxml>=5.3.0
+Requires-Dist: tenacity>=9.0.0
+Requires-Dist: typer>=0.15.1
+Requires-Dist: rich>=13.9.4
+
+# DART XBRL 분석 파이프라인
+
+OpenDART API에서 정기보고서 XBRL 원문을 내려받아 재무제표(손익계산서 중심)와 주석 키워드를 분석하는 Python CLI 프로젝트입니다.
+
+## 무엇을 하는 프로젝트인가
+
+- 회사명으로 OpenDART `corp_code` 자동 탐색
+- 정기공시 검색(사업/반기/분기)
+- XBRL ZIP 다운로드 및 압축 해제
+- 손익계산서 핵심 계정 태그 탐색
+- 주석 키워드 기반 수익성 개선 근거 수집
+- JSON + Markdown 결과 저장
+
+## 실행 전 요구사항
+
+- `uv` 설치
+- OpenDART API 키 발급
+- 네트워크 연결 (OpenDART API 호출 및 XBRL 다운로드)
+
+권장 Python 버전은 프로젝트 루트의 `.python-version`에 고정되어 있습니다.
+
+```text
+3.11
+```
+
+## 빠른 시작 (uv 기준)
+
+아래 명령은 프로젝트 루트에서 실행합니다.
+
+### 1) 가상환경 + 의존성 동기화
+
+```bash
+uv sync
+```
+
+위 명령으로 다음이 자동으로 처리됩니다.
+
+- `.venv` 생성
+- `pyproject.toml` 기반 의존성 설치
+- 로컬 패키지(`dart-xbrl-pipeline`) editable 설치
+- `uv.lock` 생성/갱신
+
+### 2) 환경변수 파일 준비
+
+`.env.example`을 복사해서 `.env`를 만들고 API 키를 채웁니다.
+
+```bash
+# macOS / Linux
+cp .env.example .env
+
+# Windows PowerShell
+Copy-Item .env.example .env
+```
+
+`.env` 예시:
+
+```dotenv
+OPENDART_API_KEY=your_real_api_key
+```
+
+### 3) CLI 실행 확인
+
+```bash
+uv run dart-xbrl --help
+```
+
+정상이라면 옵션 목록(`--corp-name`, `--date`, `--report-type` 등)이 출력됩니다.
+
+## 실제 분석 실행
+
+### 기본 실행
+
+```bash
+uv run dart-xbrl --corp-name 하나마이크론 --date 2026-03-19 --report-type annual
+```
+
+### corp_code를 이미 알고 있을 때
+
+```bash
+uv run dart-xbrl --corp-name 하나마이크론 --corp-code 00286846 --date 2026-03-19 --report-type annual
+```
+
+### 보고서 유형 옵션
+
+- `annual` : 사업보고서
+- `semiannual` : 반기보고서
+- `q1` : 1분기보고서
+- `q3` : 3분기보고서
+
+## 출력 결과
+
+실행 후 기본적으로 아래 산출물이 생성됩니다.
+
+- `reports/<접수번호>_analysis.json`
+- `reports/<접수번호>_analysis.md`
+- `data/raw/` : 원본 ZIP
+- `data/parsed/` : 압축 해제 결과
+
+## 개발/검증용 명령
+
+```bash
+# 환경 재동기화
+uv sync
+
+# CLI 도움말
+uv run dart-xbrl --help
+
+# 모듈 직접 실행(디버깅용)
+uv run python -m dart_xbrl_pipeline.cli --help
+```
+
+## 프로젝트 구조
+
+```text
+.
+|- config/default.yaml
+|- data/
+|  |- raw/
+|  `- parsed/
+|- reports/
+|- src/dart_xbrl_pipeline/
+|  |- analyzer.py
+|  |- cli.py
+|  |- config.py
+|  |- opendart.py
+|  |- reporter.py
+|  `- xbrl_parser.py
+|- .env.example
+|- pyproject.toml
+`- README.md
+```
+
+## 설정 동작 방식
+
+- 환경변수 로딩: `src/dart_xbrl_pipeline/config.py`
+  - 프로젝트 루트의 `.env`를 읽어 `OPENDART_API_KEY`를 로딩
+- 설정 파일 로딩: `config/default.yaml`
+  - 보고서 타입별 코드(`reprt_codes`)와 키워드 사전 사용
+
+## 트러블슈팅
+
+### 1) `OPENDART_API_KEY` 오류
+
+- 원인: `.env` 누락 또는 키 값 미설정
+- 확인:
+
+```bash
+uv run python -c "from dart_xbrl_pipeline.config import load_settings; load_settings(); import os; print(bool(os.getenv('OPENDART_API_KEY')))"
+```
+
+`True`가 출력되어야 정상입니다.
+
+## 의존성 변경 시 유지보수 규칙
+
+`pyproject.toml`의 의존성을 수정했다면 아래 중 하나를 실행하고 `uv.lock`을 함께 커밋하세요.
+
+```bash
+uv lock
+# 또는
+uv sync
+```
+
+### 2) 의존성 꼬임/재설치 필요
+
+```bash
+uv sync --reinstall
+```
+
+### 3) 락파일은 유지하고 환경만 맞추고 싶을 때
+
+```bash
+uv sync --frozen
+```
+
+## 현재 설계의 한계
+
+- 손익계산서 추출은 taxonomy 태그 힌트 기반이라 회사별 태그 편차에 민감할 수 있습니다.
+- 주석 분석은 키워드 적중 방식이라 숫자 단위 정규화/표 구조 해석 고도화가 필요합니다.
+- 연결/별도, 당기/전기 context 매핑은 XBRL context 구조별 정밀화 여지가 있습니다.
+
+## 참고 링크
+
+- OpenDART 소개: https://opendart.fss.or.kr/intro/main.do
+- 공시검색 API: https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019001
+- XBRL 원본파일 API: https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS003&apiId=2019019
