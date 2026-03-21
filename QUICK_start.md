@@ -90,15 +90,15 @@ uv run python -c "from dart_xbrl_pipeline.config import load_settings; load_sett
 
 ### 3.1 단일 회사 분석
 
-**가장 간단한 예시 - 하나마이크론:**
+**가장 간단한 예시 - 삼성전자:**
 
 ```bash
-uv run dart-xbrl --corp-name 하나마이크론 --date 2026-03-19 --report-type annual
+uv run dart-xbrl --corp-name 삼성전자 --date 2026-03-19 --report-type annual
 ```
 
 **출력 예시:**
 ```
-🔄 하나마이크론(00445054) 분석 중...
+🔄 삼성전자(00445054) 분석 중...
 📥 XBRL 다운로드 완료: 20260319000032
 📊 손익계산서 추출 완료 (12개 계정)
 📝 주석 분석 완료 (45개 키워드 적중)
@@ -135,16 +135,11 @@ cp config/batch_jobs.example.yaml config/my_first_batch.yaml
 max_workers: 2
 retry_failed: true
 jobs:
-  - corp_name: 하나마이크론
-    corp_code: "00286846"
+  - corp_name: 삼성전자
+    corp_code: "00126380"
     date: "2025-12-31"
     report_type: annual
   
-  - corp_name: 삼성전자
-    corp_code: "00126380"
-    date: "2025-06-30"
-    report_type: semiannual
-
   - corp_name: SK하이닉스
     corp_code: "00164779"
     date: "2025-09-30"
@@ -163,9 +158,9 @@ uv run dart-xbrl batch --job-file config/my_first_batch.yaml
 🚀 배치 실행 시작 (총 3개 작업)
 ⚙️  병렬 작업자: 2개
 
-[1/3] 🔄 하나마이크론 (annual) 분석 중...
+[1/3] 🔄 삼성전자 (annual) 분석 중...
 [2/3] 🔄 삼성전자 (semiannual) 분석 중...
-✅ [1/3] 하나마이크론 완료 (12.3s)
+✅ [1/3] 삼성전자 완료 (12.3s)
 [3/3] 🔄 SK하이닉스 (q3) 분석 중...
 ✅ [2/3] 삼성전자 완료 (15.7s)
 ✅ [3/3] SK하이닉스 완료 (11.2s)
@@ -241,7 +236,7 @@ uv run dart-xbrl batch \
 
 **출력 예시:**
 ```markdown
-# 하나마이크론 수익성 개선 포인트 분석
+# 삼성전자 수익성 개선 포인트 분석
 
 ## 핵심 개선 포인트
 1. **차입금 이자부담 감소**: 이자비용 28.3% 감소 (table: tbl_a3f2b8d9)
@@ -316,7 +311,7 @@ cp .env.example .env
 # - DART 공시 시스템에서 회사명 검색
 # - 또는 corp_code 직접 지정
 
-uv run dart-xbrl --corp-name "하나마이크론" --corp-code "00286846"
+uv run dart-xbrl --corp-name "삼성전자" --corp-code "00126380"
 ```
 
 ### 6.3 공시를 찾을 수 없음
@@ -329,10 +324,10 @@ uv run dart-xbrl --corp-name "하나마이크론" --corp-code "00286846"
 **해결:**
 ```bash
 # 날짜 범위 확대
-curl -s "https://opendart.fss.or.kr/api/list.json?crtfc_key=YOUR_KEY&corp_code=00286846&bgn_de=20200101&end_de=20261231&page_count=100" | uv run python -m json.tool
+curl -s "https://opendart.fss.or.kr/api/list.json?crtfc_key=YOUR_KEY&corp_code=00126380&bgn_de=20200101&end_de=20261231&page_count=100" | uv run python -m json.tool
 
 # 보고서 유형 변경
-curl -s "https://opendart.fss.or.kr/api/list.json?crtfc_key=YOUR_KEY&corp_code=00286846&bgn_de=20250101&end_de=20251231&last_reprt_at=Y" | uv run python -m json.tool
+curl -s "https://opendart.fss.or.kr/api/list.json?crtfc_key=YOUR_KEY&corp_code=00126380&bgn_de=20250101&end_de=20251231&last_reprt_at=Y" | uv run python -m json.tool
 ```
 
 ### 6.4 디버그 모드
