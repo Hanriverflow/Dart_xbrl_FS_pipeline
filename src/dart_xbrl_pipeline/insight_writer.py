@@ -130,9 +130,14 @@ class InsightWriter:
 
         return True
 
-    def save_memo(self, memo: ProfitabilityMemo, output_path: Path) -> None:
+    def save_memo(
+        self, memo: ProfitabilityMemo, output_path: Path, title: str | None = None
+    ) -> None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(self._memo_to_markdown(memo), encoding="utf-8")
+        output_path.write_text(
+            self.memo_to_markdown(memo, title=title or "수익성 개선 포인트"),
+            encoding="utf-8",
+        )
 
     def _resolve_template_path(self) -> Path:
         configured = self._config.get("prompt_template_path")
@@ -342,9 +347,12 @@ class InsightWriter:
             return None
         return stripped[start : end + 1]
 
-    def _memo_to_markdown(self, memo: ProfitabilityMemo) -> str:
+    @staticmethod
+    def memo_to_markdown(
+        memo: ProfitabilityMemo, title: str = "수익성 개선 포인트"
+    ) -> str:
         lines: list[str] = []
-        lines.append("# 수익성 개선 포인트")
+        lines.append(f"# {title}")
         lines.append("")
         lines.append(f"- 접수번호: {memo.rcept_no}")
         lines.append(f"- 회사명: {memo.corp_name}")

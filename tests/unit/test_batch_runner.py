@@ -9,7 +9,13 @@ import pytest
 
 from dart_xbrl_pipeline.batch_models import BatchConfig, BatchJob, BatchJobState
 from dart_xbrl_pipeline.batch_runner import BatchRunner
-from dart_xbrl_pipeline.models import AnalysisOutput
+from dart_xbrl_pipeline.insight_models import ProfitabilityMemo
+from dart_xbrl_pipeline.models import (
+    AnalysisOutput,
+    PipelineArtifacts,
+    PipelineExecutionOptions,
+)
+from dart_xbrl_pipeline.note_models import NoteTable, NoteTablesOutput, UnitType
 
 
 def _job(
@@ -47,6 +53,84 @@ def _analysis_output(corp_name: str, output_root: Path) -> AnalysisOutput:
     )
 
 
+def _pipeline_artifacts(
+    corp_name: str,
+    output_root: Path,
+    *,
+    with_note_tables: bool = False,
+    with_llm_memo: bool = False,
+) -> PipelineArtifacts:
+    analysis = _analysis_output(corp_name, output_root)
+    note_tables = None
+    memo = None
+    token_usage: dict[str, int] = {}
+
+    if with_note_tables:
+        note_tables = NoteTablesOutput(
+            rcept_no=analysis.rcept_no,
+            corp_name=corp_name,
+            tables=[
+                NoteTable(
+                    title="차입금 현황",
+                    columns=["구분", "당기"],
+                    rows=[],
+                    unit=UnitType.WON,
+                    period_context="CFY2025",
+                    source_ref="note_1",
+                    table_type="차입금",
+                )
+            ],
+            extracted_at=analysis.diagnostics.get("extracted_at", "2026-03-21T00:00:00Z"),
+        )
+
+    if with_llm_memo:
+        memo = ProfitabilityMemo.model_validate(
+            {
+                "rcept_no": analysis.rcept_no,
+                "corp_name": corp_name,
+                "report_type": "annual",
+                "generated_at": "2026-03-21T00:00:00Z",
+                "summary": "요약",
+                "claims": [],
+                "risks": ["리스크"],
+                "action_items": ["추가 확인 필요"],
+            }
+        )
+        token_usage = {
+            "prompt_tokens": 10,
+            "completion_tokens": 20,
+            "total_tokens": 30,
+            "requests": 1,
+            "cache_hits": 0,
+        }
+        credit_memo = ProfitabilityMemo.model_validate(
+            {
+                "rcept_no": analysis.rcept_no,
+                "corp_name": corp_name,
+                "report_type": "annual",
+                "generated_at": "2026-03-21T00:00:00Z",
+                "summary": "신용 메모",
+                "claims": [],
+                "risks": ["리스크"],
+                "action_items": ["추가 확인 필요"],
+            }
+        )
+    else:
+        credit_memo = None
+
+    return PipelineArtifacts(
+        execution_options=PipelineExecutionOptions(
+            with_note_tables=with_note_tables,
+            with_llm_memo=with_llm_memo,
+        ),
+        analysis=analysis,
+        note_tables=note_tables,
+        memo=memo,
+        credit_memo=credit_memo,
+        token_usage=token_usage,
+    )
+
+
 def test_run_executes_all_jobs_and_writes_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -65,16 +149,18 @@ def test_run_executes_all_jobs_and_writes_state(
         date: str | None,
         report_type: str,
         output_root: Path,
-    ) -> AnalysisOutput:
+        execution_options: PipelineExecutionOptions | None = None,
+    ) -> PipelineArtifacts:
         assert corp_code == "00000000"
         assert date == "2025-12-31"
         assert report_type in {"annual", "semiannual", "q1"}
-        return _analysis_output(corp_name, output_root)
+        assert execution_options is not None
+        return _pipeline_artifacts(corp_name, output_root)
 
-    def fake_save_outputs(result: AnalysisOutput, output_dir: Path) -> dict[str, Path]:
+    def fake_save_outputs(result: PipelineArtifacts, output_dir: Path) -> dict[str, Path]:
         output_dir.mkdir(parents=True, exist_ok=True)
-        json_path = output_dir / f"{result.corp_name}.json"
-        md_path = output_dir / f"{result.corp_name}.md"
+        json_path = output_dir / f"{result.analysis.corp_name}.json"
+        md_path = output_dir / f"{result.analysis.corp_name}.md"
         json_path.write_text("{}", encoding="utf-8")
         md_path.write_text("# test", encoding="utf-8")
         return {"json": json_path, "markdown": md_path}
@@ -122,11 +208,13 @@ def test_retry_failed_retries_only_failed_jobs(
         date: str | None,
         report_type: str,
         output_root: Path,
-    ) -> AnalysisOutput:
+        execution_options: PipelineExecutionOptions | None = None,
+    ) -> PipelineArtifacts:
         attempts[corp_name] += 1
         if corp_name == "corp-b" and fail_b["enabled"]:
             raise RuntimeError("temporary failure")
-        return _analysis_output(corp_name, output_root)
+        assert execution_options is not None
+        return _pipeline_artifacts(corp_name, output_root)
 
     monkeypatch.setattr(
         "dart_xbrl_pipeline.batch_runner.run_analysis", fake_run_analysis
@@ -169,10 +257,12 @@ def test_load_state_resumes_and_skips_completed_jobs(
         date: str | None,
         report_type: str,
         output_root: Path,
-    ) -> AnalysisOutput:
+        execution_options: PipelineExecutionOptions | None = None,
+    ) -> PipelineArtifacts:
         if corp_name == "corp-b" and fail_b["enabled"]:
             raise RuntimeError("first pass failure")
-        return _analysis_output(corp_name, output_root)
+        assert execution_options is not None
+        return _pipeline_artifacts(corp_name, output_root)
 
     monkeypatch.setattr(
         "dart_xbrl_pipeline.batch_runner.run_analysis", flaky_run_analysis
@@ -200,9 +290,11 @@ def test_load_state_resumes_and_skips_completed_jobs(
         date: str | None,
         report_type: str,
         output_root: Path,
-    ) -> AnalysisOutput:
+        execution_options: PipelineExecutionOptions | None = None,
+    ) -> PipelineArtifacts:
         called.append(corp_name)
-        return _analysis_output(corp_name, output_root)
+        assert execution_options is not None
+        return _pipeline_artifacts(corp_name, output_root)
 
     monkeypatch.setattr(
         "dart_xbrl_pipeline.batch_runner.run_analysis", resumed_run_analysis
@@ -241,3 +333,53 @@ def test_keyboard_interrupt_is_handled_gracefully(
     assert runner.state_path.exists()
     payload = json.loads(runner.state_path.read_text(encoding="utf-8"))
     assert payload["jobs"][0]["state"] in {BatchJobState.queued, "queued"}
+
+
+def test_run_writes_all_requested_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = BatchConfig(jobs=[_job("job-1", "corp-a")], max_workers=1)
+    execution_options = PipelineExecutionOptions(
+        with_note_tables=True,
+        with_llm_memo=True,
+    )
+
+    def fake_run_analysis(
+        corp_name: str,
+        corp_code: str | None,
+        date: str | None,
+        report_type: str,
+        output_root: Path,
+        execution_options: PipelineExecutionOptions | None = None,
+    ) -> PipelineArtifacts:
+        assert execution_options == PipelineExecutionOptions(
+            with_note_tables=True,
+            with_llm_memo=True,
+        )
+        return _pipeline_artifacts(
+            corp_name,
+            output_root,
+            with_note_tables=True,
+            with_llm_memo=True,
+        )
+
+    monkeypatch.setattr(
+        "dart_xbrl_pipeline.batch_runner.run_analysis", fake_run_analysis
+    )
+
+    runner = BatchRunner(
+        config=config,
+        output_dir=tmp_path / "reports",
+        execution_options=execution_options,
+    )
+
+    result = runner.run()
+
+    assert result.succeeded == 1
+    job = result.jobs[0]
+    assert "note_tables" in job.output_paths
+    assert "profitability_memo" in job.output_paths
+    assert "credit_memo" in job.output_paths
+    assert "manifest" in job.output_paths
+    assert job.output_paths["note_tables"].exists()
+    assert job.output_paths["profitability_memo"].exists()
+    assert job.output_paths["credit_memo"].exists()
+    assert job.output_paths["manifest"].exists()

@@ -143,6 +143,8 @@ def extract_income_statement_metrics(root: Path) -> list[IncomeStatementMetric]:
 def extract_note_hits(root: Path, keyword_map: dict[str, list[str]]) -> list[NotesHit]:
     hits: list[NotesHit] = []
     for xml_file in iter_xml_files(root):
+        if xml_file.suffix.lower() == ".xsd":
+            continue
         try:
             tree = ET.parse(xml_file)
         except ET.ParseError:

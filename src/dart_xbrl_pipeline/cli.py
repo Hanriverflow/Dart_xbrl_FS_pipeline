@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 import traceback
 from importlib import import_module
@@ -17,6 +16,7 @@ from rich.table import Table
 from .analyzer import run_analysis
 from .batch_models import BatchConfig, BatchJobResult
 from .config import project_root
+from .models import LLMProvider, PipelineExecutionOptions
 from .reporter import save_outputs
 
 app = typer.Typer(help="OpenDART XBRL 기반 재무제표/주석 분석 CLI")
@@ -133,6 +133,20 @@ def analyze(
     output_dir: Path = typer.Option(
         project_root() / "reports", help="결과 저장 디렉터리"
     ),
+    with_note_tables: bool = typer.Option(
+        False, "--with-note-tables", help="주석 테이블 파싱 포함"
+    ),
+    with_llm_memo: bool = typer.Option(
+        False, "--with-llm-memo", help="LLM 메모 생성 포함"
+    ),
+    llm_provider: LLMProvider = typer.Option(
+        "auto",
+        "--llm-provider",
+        help="auto | openai | anthropic",
+    ),
+    llm_model: str | None = typer.Option(
+        None, "--llm-model", help="선택한 LLM provider에서 사용할 모델명"
+    ),
     debug: bool = typer.Option(
         False, "--debug", help="상세 오류 정보(스택 트레이스) 표시"
     ),
@@ -145,6 +159,12 @@ def analyze(
             date=date,
             report_type=report_type,
             output_root=project_root() / "data",
+            execution_options=PipelineExecutionOptions(
+                with_note_tables=with_note_tables,
+                with_llm_memo=with_llm_memo,
+                llm_provider=llm_provider,
+                llm_model=llm_model,
+            ),
         )
         saved = save_outputs(result, output_dir)
         print("[green]분석 완료[/green]")
@@ -167,6 +187,14 @@ def batch(
     with_llm_memo: bool = typer.Option(
         False, "--with-llm-memo", help="LLM 메모 생성 포함"
     ),
+    llm_provider: LLMProvider = typer.Option(
+        "auto",
+        "--llm-provider",
+        help="auto | openai | anthropic",
+    ),
+    llm_model: str | None = typer.Option(
+        None, "--llm-model", help="선택한 LLM provider에서 사용할 모델명"
+    ),
     output_dir: Path = typer.Option(
         project_root() / "reports", help="결과 저장 디렉터리"
     ),
@@ -179,9 +207,6 @@ def batch(
         if debug:
             logging.basicConfig(level=logging.DEBUG)
 
-        os.environ["DART_XBRL_WITH_NOTE_TABLES"] = "1" if with_note_tables else "0"
-        os.environ["DART_XBRL_WITH_LLM_MEMO"] = "1" if with_llm_memo else "0"
-
         config = load_batch_config(
             job_file=job_file,
             max_workers=max_workers,
@@ -189,7 +214,16 @@ def batch(
         )
         batch_runner_module = import_module("dart_xbrl_pipeline.batch_runner")
         batch_runner_cls = batch_runner_module.BatchRunner
-        runner = batch_runner_cls(config=config, output_dir=output_dir)
+        runner = batch_runner_cls(
+            config=config,
+            output_dir=output_dir,
+            execution_options=PipelineExecutionOptions(
+                with_note_tables=with_note_tables,
+                with_llm_memo=with_llm_memo,
+                llm_provider=llm_provider,
+                llm_model=llm_model,
+            ),
+        )
 
         result = runner.retry_failed() if retry_failed else runner.run()
         print_batch_summary(result, runner.summary_path)

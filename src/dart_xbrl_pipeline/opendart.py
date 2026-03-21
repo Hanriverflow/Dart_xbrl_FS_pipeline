@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -32,8 +33,22 @@ class OpenDartClient:
         zip_path.write_bytes(response.content)
         return zip_path
 
+    @staticmethod
+    def _is_cache_fresh(path: Path) -> bool:
+        if not path.exists():
+            return False
+        modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).date()
+        return modified == datetime.now(timezone.utc).date()
+
+    def _get_corp_codes_zip(self, cache_dir: Path) -> Path:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cached_zip = cache_dir / "corpCode.zip"
+        if self._is_cache_fresh(cached_zip):
+            return cached_zip
+        return self.download_corp_codes(cache_dir)
+
     def find_corp_code_by_name(self, corp_name: str, cache_dir: Path) -> str:
-        zip_path = self.download_corp_codes(cache_dir)
+        zip_path = self._get_corp_codes_zip(cache_dir)
         with zipfile.ZipFile(zip_path, "r") as zf:
             xml_name = next(name for name in zf.namelist() if name.lower().endswith(".xml"))
             xml_bytes = zf.read(xml_name)

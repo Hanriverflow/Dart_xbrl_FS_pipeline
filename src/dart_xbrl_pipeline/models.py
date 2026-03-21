@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal, TypeAlias
+from typing import Any, ClassVar, Literal, TypeAlias
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from .insight_models import ProfitabilityMemo
+from .note_models import NoteTablesOutput
 
 ReportType: TypeAlias = Literal["annual", "semiannual", "q1", "q3"]
+LLMProvider: TypeAlias = Literal["auto", "openai", "anthropic"]
 
 
 class Filing(BaseModel):
@@ -47,3 +51,27 @@ class AnalysisOutput(BaseModel):
     note_hits: list[NotesHit] = Field(default_factory=list)
     summary: list[str] = Field(default_factory=list)
     diagnostics: dict[str, Any] = Field(default_factory=dict)
+
+
+class PipelineExecutionOptions(BaseModel):
+    with_note_tables: bool = False
+    with_llm_memo: bool = False
+    llm_provider: LLMProvider = "auto"
+    llm_model: str | None = None
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid")
+
+
+class PipelineArtifacts(BaseModel):
+    schema_version: str = "pipeline_artifacts/v1"
+    execution_options: PipelineExecutionOptions = Field(
+        default_factory=PipelineExecutionOptions
+    )
+    analysis: AnalysisOutput
+    note_tables: NoteTablesOutput | None = None
+    memo: ProfitabilityMemo | None = None
+    credit_memo: ProfitabilityMemo | None = None
+    token_usage: dict[str, int] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid")

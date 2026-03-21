@@ -55,6 +55,12 @@ class NoteTableParser:
         r"(CFY\d{4}|PFY\d{4}|BPFY\d{4})",
         re.IGNORECASE,
     )
+    _GENERIC_CONTEXT_MEMBERS: tuple[str, ...] = (
+        "ConsolidatedMember",
+        "SeparateMember",
+        "ReportedAmountMember",
+        "ConsolidatedAndSeparateFinancialStatementsAxis",
+    )
 
     def __init__(
         self,
@@ -76,6 +82,9 @@ class NoteTableParser:
             if xml_file.suffix.lower() not in {".xml", ".xbrl"}:
                 continue
             tables.extend(self.extract_tables(xml_file))
+
+        if not tables:
+            tables.extend(self.extract_presentation_tables(xbrl_dir))
 
         if self.debug_dir is not None and self.failed_tables:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
@@ -142,6 +151,62 @@ class NoteTableParser:
 
         return extracted
 
+    def extract_presentation_tables(self, xbrl_dir: Path) -> list[NoteTable]:
+        instance_path = next(xbrl_dir.glob("*.xbrl"), None)
+        if instance_path is None:
+            return []
+
+        try:
+            instance_root = ET.parse(instance_path).getroot()
+        except ET.ParseError as exc:
+            self._record_failure(
+                xml_file=instance_path,
+                reason="presentation_instance_parse_error",
+                title=None,
+                detail=str(exc),
+            )
+            return []
+
+        label_map = self._build_label_map(xbrl_dir)
+        unit_map = self._build_unit_map(instance_root)
+        context_members = self._build_context_members(instance_root)
+
+        table_specs = [
+            {
+                "title_concept": "dart_DetailedInformationAboutBorrowingsTable",
+                "default_title": "차입금 세부내역",
+                "table_type": "차입금",
+                "context_markers": (
+                    "DetailedInformationAboutBorrowingsTableOfMember",
+                    "DetailsOfLongTermBorrowingsTableOfMember",
+                ),
+            },
+            {
+                "title_concept": "dart_SensitivityAnalysisForEachTypeOfMarketRiskTable",
+                "default_title": "환율 민감도 분석",
+                "table_type": "환율 민감도",
+                "context_markers": (
+                    "SensitivityAnalysisForEachTypeOfMarketRiskTableOfMember",
+                ),
+            },
+        ]
+
+        extracted: list[NoteTable] = []
+        for spec in table_specs:
+            table = self._build_table_from_context_groups(
+                instance_root=instance_root,
+                context_members=context_members,
+                unit_map=unit_map,
+                label_map=label_map,
+                source_ref=str(instance_path),
+                title=label_map.get(spec["title_concept"], spec["default_title"]),
+                table_type=spec["table_type"],
+                context_markers=spec["context_markers"],
+            )
+            if table is not None:
+                extracted.append(table)
+        return extracted
+
     def detect_table_type(self, title: str) -> str | None:
         normalized = re.sub(r"\s+", " ", title).strip().lower()
         if not normalized:
@@ -173,6 +238,41 @@ class NoteTableParser:
             unit_map[unit_id] = unit
         return unit_map
 
+    def _build_label_map(self, xbrl_dir: Path) -> dict[str, str]:
+        label_map: dict[str, str] = {}
+        for pattern in ("*_lab-ko.xml", "*_lab-en.xml"):
+            for label_path in xbrl_dir.glob(pattern):
+                try:
+                    root = ET.parse(label_path).getroot()
+                except ET.ParseError:
+                    continue
+
+                loc_to_concept: dict[str, str] = {}
+                resource_text: dict[str, str] = {}
+                for elem in root.iter():
+                    tag = strip_namespace(elem.tag).lower()
+                    if tag == "loc":
+                        label = elem.attrib.get("{http://www.w3.org/1999/xlink}label")
+                        href = elem.attrib.get("{http://www.w3.org/1999/xlink}href", "")
+                        if label and "#" in href:
+                            loc_to_concept[label] = href.split("#")[-1]
+                    elif tag == "label":
+                        label_id = elem.attrib.get("{http://www.w3.org/1999/xlink}label")
+                        text = self._extract_text(elem)
+                        if label_id and text:
+                            resource_text[label_id] = text
+
+                for elem in root.iter():
+                    if strip_namespace(elem.tag).lower() != "labelarc":
+                        continue
+                    from_label = elem.attrib.get("{http://www.w3.org/1999/xlink}from")
+                    to_label = elem.attrib.get("{http://www.w3.org/1999/xlink}to")
+                    concept = loc_to_concept.get(from_label or "")
+                    text = resource_text.get(to_label or "")
+                    if concept and text and concept not in label_map:
+                        label_map[concept] = text
+        return label_map
+
     def _collect_context_ids(self, root: ET.Element) -> list[str]:
         context_ids: list[str] = []
         for elem in root.iter():
@@ -181,6 +281,24 @@ class NoteTableParser:
                 if context_id:
                     context_ids.append(context_id)
         return context_ids
+
+    def _build_context_members(self, root: ET.Element) -> dict[str, list[str]]:
+        members_by_context: dict[str, list[str]] = {}
+        for elem in root.iter():
+            if strip_namespace(elem.tag).lower() != "context":
+                continue
+            context_id = elem.attrib.get("id")
+            if not context_id:
+                continue
+            members: list[str] = []
+            for child in elem.iter():
+                if strip_namespace(child.tag).lower() != "explicitmember":
+                    continue
+                text = (child.text or "").strip()
+                if text:
+                    members.append(text.split(":")[-1])
+            members_by_context[context_id] = members
+        return members_by_context
 
     def _detect_table_title(self, table_elem: ET.Element) -> str:
         for attr in ("title", "name", "id", "contextRef"):
@@ -295,6 +413,108 @@ class NoteTableParser:
             if cleaned:
                 chunks.append(cleaned)
         return " ".join(chunks)
+
+    def _build_table_from_context_groups(
+        self,
+        *,
+        instance_root: ET.Element,
+        context_members: dict[str, list[str]],
+        unit_map: dict[str, UnitType],
+        label_map: dict[str, str],
+        source_ref: str,
+        title: str,
+        table_type: str,
+        context_markers: tuple[str, ...],
+    ) -> NoteTable | None:
+        grouped: dict[str, dict[str, tuple[str, UnitType, bool]]] = {}
+        column_order: list[str] = []
+        detected_units: list[UnitType] = []
+
+        for elem in instance_root.iter():
+            context_ref = elem.attrib.get("contextRef")
+            if not context_ref or not any(marker in context_ref for marker in context_markers):
+                continue
+
+            raw_value = (elem.text or "").strip()
+            if not raw_value:
+                continue
+
+            concept = strip_namespace(elem.tag)
+            column_name = label_map.get(concept, self._humanize_identifier(concept))
+            unit = unit_map.get(elem.attrib.get("unitRef", ""), UnitType.OTHER)
+            numeric_value = UnitConverter.parse_numeric(raw_value, source_unit=unit)
+            is_numeric = numeric_value is not None
+            if unit != UnitType.OTHER:
+                detected_units.append(unit)
+
+            grouped.setdefault(context_ref, {})
+            grouped[context_ref][column_name] = (raw_value, unit, is_numeric)
+            if column_name not in column_order:
+                column_order.append(column_name)
+
+        if not grouped:
+            return None
+
+        rows: list[TableRow] = []
+        seen_numeric = False
+        for row_idx, (context_ref, cells_by_column) in enumerate(grouped.items()):
+            row_header = self._build_row_header(
+                context_members.get(context_ref, []),
+                label_map=label_map,
+            )
+            cells: list[TableCell] = []
+            for col_idx, column_name in enumerate(column_order):
+                if column_name not in cells_by_column:
+                    continue
+                raw_value, unit, _ = cells_by_column[column_name]
+                value = UnitConverter.parse_numeric(raw_value, source_unit=unit)
+                is_numeric = value is not None
+                seen_numeric = seen_numeric or is_numeric
+                cells.append(
+                    TableCell(
+                        row_idx=row_idx,
+                        col_idx=col_idx,
+                        value=value,
+                        raw_value=raw_value,
+                        is_numeric=is_numeric,
+                    )
+                )
+            if cells:
+                rows.append(TableRow(row_idx=row_idx, header=row_header, cells=cells))
+
+        if not rows or not seen_numeric:
+            return None
+
+        return NoteTable(
+            title=title,
+            columns=column_order,
+            rows=rows,
+            unit=detected_units[0] if detected_units else UnitType.OTHER,
+            period_context=self._select_period_context(list(grouped.keys()), list(context_members.keys())),
+            source_ref=f"presentation-fallback:{source_ref}",
+            table_type=table_type,
+        )
+
+    def _build_row_header(
+        self,
+        members: list[str],
+        *,
+        label_map: dict[str, str],
+    ) -> str | None:
+        informative = []
+        for member in members:
+            if any(token in member for token in self._GENERIC_CONTEXT_MEMBERS):
+                continue
+            informative.append(label_map.get(member, self._humanize_identifier(member)))
+        if not informative:
+            return None
+        return " / ".join(dict.fromkeys(informative))
+
+    def _humanize_identifier(self, value: str) -> str:
+        text = value.split("_")[-1]
+        text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
 
     def _select_period_context(
         self,

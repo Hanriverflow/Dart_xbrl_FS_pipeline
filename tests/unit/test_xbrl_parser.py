@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from dart_xbrl_pipeline.xbrl_parser import (
     extract_income_statement_metrics,
     extract_note_hits,
@@ -18,3 +20,29 @@ def test_extract_note_hits_with_sample_fixture(sample_xbrl_dir) -> None:
     hits = extract_note_hits(sample_xbrl_dir, keyword_map)
     assert hits
     assert hits[0].category == "revenue"
+
+
+def test_extract_note_hits_ignores_xsd_files(tmp_path: Path) -> None:
+    xsd_file = tmp_path / "taxonomy.xsd"
+    xsd_file.write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<schema>
+  <element name="RevenueDefinition">Revenue</element>
+</schema>
+""",
+        encoding="utf-8",
+    )
+    xbrl_file = tmp_path / "instance.xbrl"
+    xbrl_file.write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <Revenue contextRef="CFY2025ConsolidatedMember">Revenue from contracts</Revenue>
+</root>
+""",
+        encoding="utf-8",
+    )
+
+    hits = extract_note_hits(tmp_path, {"revenue": ["Revenue"]})
+
+    assert len(hits) == 1
+    assert hits[0].text == "Revenue from contracts"

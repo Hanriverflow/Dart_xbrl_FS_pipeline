@@ -1,7 +1,7 @@
 # QUICK_start.md - DART XBRL 파이프라인 빠른 시작 가이드
 
 > **⏱️ 예상 소요 시간**: 15분  
-> **🎯 목표**: 첫 배치 분석 실행까지
+> **🎯 목표**: 첫 배치 분석과 credit/issuer 관점 산출물 확인까지
 
 ---
 
@@ -40,12 +40,11 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 ### 1.3 프로젝트 클론 및 설치
 
 ```bash
-# 저장소 클론
-git clone <repository-url>
-cd Dart_xbrl_FS_pipeline
-
 # 가상환경 생성 및 의존성 설치
 uv sync
+
+# LLM 메모까지 쓰려면
+uv sync --extra llm
 ```
 
 **✅ 확인:** `uv sync` 실행 후 `.venv` 폴더가 생성되면 성공
@@ -74,7 +73,11 @@ cp .env.example .env
 **.env 파일 내용:**
 ```dotenv
 OPENDART_API_KEY=your_actual_api_key_here
+# OPENAI_API_KEY=your_openai_api_key_here        # optional
+# ANTHROPIC_API_KEY=your_anthropic_api_key_here  # optional
 ```
+
+두 LLM 키를 모두 넣어도 됩니다. 그 경우 실행 시 `--llm-provider openai` 또는 `--llm-provider anthropic`로 선택합니다. 키를 하나만 두면 기본 `auto` 모드가 해당 provider를 사용합니다.
 
 **⚠️ 주의:** `.env` 파일은 절대 Git에 커밋하지 마세요!
 
@@ -117,7 +120,7 @@ cat reports/20260319000032_analysis.md
 uv run python -c "import json; print(json.dumps(json.load(open('reports/20260319000032_analysis.json')), indent=2, ensure_ascii=False))"
 ```
 
-**✅ 첫 실행 성공!** 이제 배치 분석으로 넘어갑니다.
+**✅ 첫 실행 성공!** 이제 배치 분석과 구조화 산출물로 넘어갑니다.
 
 ---
 
@@ -218,21 +221,34 @@ with open('reports/20260319000032_note_tables.json') as f:
 "
 ```
 
-### 5.2 LLM 수익성 메모 (--with-llm-memo)
+### 5.2 LLM 메모 (--with-llm-memo)
 
-AI가 재무 데이터를 분석하여 투자 메모를 생성합니다:
+AI가 재무 데이터를 분석하여 수익성 메모와 신용/차환 리스크 메모를 생성합니다:
 
 ```bash
-# LLM 메모 생성 (OpenAI API 키 필요)
-export OPENAI_API_KEY=your_openai_key
+# LLM 메모 생성 (OpenAI 또는 Anthropic API 키 필요)
+# export OPENAI_API_KEY=your_openai_key
+# export ANTHROPIC_API_KEY=your_anthropic_key
 
 uv run dart-xbrl batch \
   --job-file config/my_first_batch.yaml \
   --with-llm-memo
+
+# provider 명시 실행
+uv run dart-xbrl batch \
+  --job-file config/my_first_batch.yaml \
+  --with-llm-memo \
+  --llm-provider openai
+
+uv run dart-xbrl batch \
+  --job-file config/my_first_batch.yaml \
+  --with-llm-memo \
+  --llm-provider anthropic
 ```
 
 **추가 출력:**
 - `reports/<접수번호>_profitability_memo.md`
+- `reports/<접수번호>_credit_memo.md`
 
 **출력 예시:**
 ```markdown
@@ -259,6 +275,12 @@ uv run dart-xbrl batch \
   --with-llm-memo \
   --max-workers 4
 ```
+
+**추천 해석 포인트:**
+- 차입금 만기/조달 부담
+- 이자비용 증감
+- CAPEX 대비 현금창출력
+- FX 민감도 및 기타 주석 리스크
 
 ### 5.4 실패한 작업 재시도
 
@@ -348,11 +370,14 @@ uv run dart-xbrl batch \
 ### 6.5 테스트 실행으로 검증
 
 ```bash
+# 개발 의존성 포함 동기화
+uv sync --extra dev
+
 # 전체 테스트
 uv run pytest
 
-# 특정 테스트
-uv run pytest tests/unit/test_batch_runner.py -v
+# 정적 확인
+uv run python -m compileall src tests
 ```
 
 ---
@@ -362,6 +387,7 @@ uv run pytest tests/unit/test_batch_runner.py -v
 - **전체 기능**: [README.md](./README.md)
 - **개발 가이드**: [PRD.md](./PRD.md)
 - **구현 로드맵**: [roadmap.md](./roadmap.md)
+- **제품 wedge 문서**: [docs/designs/credit-wedge.md](./docs/designs/credit-wedge.md)
 
 ---
 
@@ -374,4 +400,4 @@ uv run pytest tests/unit/test_batch_runner.py -v
 
 ---
 
-**🎉 축하합니다! 이제 DART XBRL 파이프라인을 마스터했습니다!**
+**🎉 첫 end-to-end 파이프라인을 확인했습니다. 이제 이 흐름을 credit/issuer 분석 use case로 더 날카롭게 키우면 됩니다.**

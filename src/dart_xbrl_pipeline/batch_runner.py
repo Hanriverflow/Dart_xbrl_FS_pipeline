@@ -12,6 +12,7 @@ from typing import Mapping
 
 from .analyzer import run_analysis
 from .batch_models import BatchConfig, BatchJob, BatchJobResult, BatchJobState
+from .models import PipelineExecutionOptions
 from .reporter import save_outputs
 
 logger = logging.getLogger(__name__)
@@ -21,9 +22,15 @@ class BatchRunner:
     DEFAULT_MAX_ATTEMPTS = 3
     DEFAULT_BACKOFF_BASE_SEC = 1.0
 
-    def __init__(self, config: BatchConfig, output_dir: Path):
+    def __init__(
+        self,
+        config: BatchConfig,
+        output_dir: Path,
+        execution_options: PipelineExecutionOptions | None = None,
+    ):
         self.config = config
         self.output_dir = output_dir
+        self.execution_options = execution_options or PipelineExecutionOptions()
         self.batch_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         self.batch_dir = self.output_dir / "batch" / self.batch_id
         self.state_path = self.batch_dir / "state.json"
@@ -87,14 +94,15 @@ class BatchRunner:
                     date=job.date,
                     report_type=job.report_type,
                     output_root=job_output_root,
+                    execution_options=self.execution_options,
                 )
                 saved_paths = save_outputs(analysis_result, report_output_dir)
 
                 with self._lock:
                     job.output_paths = {
                         **saved_paths,
-                        "xbrl_zip_path": analysis_result.xbrl_zip_path,
-                        "extracted_dir": analysis_result.extracted_dir,
+                        "xbrl_zip_path": analysis_result.analysis.xbrl_zip_path,
+                        "extracted_dir": analysis_result.analysis.extracted_dir,
                     }
                     job.state = BatchJobState.succeeded
                     job.completed_at = datetime.now(timezone.utc)
@@ -173,6 +181,7 @@ class BatchRunner:
                 "updated_at": datetime.now(timezone.utc).isoformat(),
                 "max_workers": self.config.max_workers,
                 "retry_failed": self.config.retry_failed,
+                "execution_options": self.execution_options.model_dump(),
                 "jobs": [job.model_dump(mode="json") for job in self.config.jobs],
             }
             self._write_json_atomic(self.state_path, payload)
@@ -238,7 +247,11 @@ class BatchRunner:
                     for item in payload.get("jobs", [])
                     if isinstance(item, dict) and "job_id" in item
                 }
-                if state_job_ids == configured_job_ids:
+                saved_execution_options = payload.get("execution_options", {})
+                if (
+                    state_job_ids == configured_job_ids
+                    and saved_execution_options == self.execution_options.model_dump()
+                ):
                     return candidate
             except (OSError, json.JSONDecodeError, TypeError, KeyError):
                 continue

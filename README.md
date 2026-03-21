@@ -1,12 +1,14 @@
-# DART XBRL 분석 파이프라인 v2.0
+# DART XBRL 분석 파이프라인 v0.2
 
-> **⚡ MAJOR UPGRADE 완료**: 배치 처리, 주석 테이블 파싱, LLM 자동 메모 기능이 추가되었습니다!
+> **배치 실행, 주석 테이블 추출, evidence-first 메모 생성 흐름을 갖춘 분석 워크벤치**
 
-OpenDART API에서 정기보고서 XBRL 원문을 내려받아 재무제표와 주석을 분석하는 Python CLI 프로젝트입니다. 이번 v2.0 업그레이드로 단일 분석을 넘어 **대규모 배치 처리**, **구조적 주석 테이블 추출**, **AI 기반 수익성 분석 메모**가 가능해졌습니다.
+OpenDART API에서 정기보고서 XBRL 원문을 내려받아 재무제표와 주석을 분석하는 Python CLI 프로젝트입니다. 현재 `v0.2` 릴리즈는 단일 파서를 넘어 **배치 처리**, **구조적 주석 테이블 추출**, **AI 기반 메모 생성**까지 이어지는 end-to-end 파이프라인을 제공합니다.
+
+이 레포의 현재 wedge는 범용 XBRL 파서가 아니라 **issuer/credit 분석 워크플로우의 기반**입니다. 차입금, 이자비용, CAPEX, 환율 민감도 같은 주석 기반 신호를 구조화하고, 근거가 연결된 분석 메모로 이어주는 흐름을 만드는 것이 핵심입니다. 자세한 방향은 [docs/designs/credit-wedge.md](./docs/designs/credit-wedge.md)를 참고하세요.
 
 ---
 
-## 🎯 주요 기능 (What's New in v2.0)
+## 🎯 주요 기능 (What's New in v0.2)
 
 ### 1️⃣ 배치 실행 시스템 (Batch Runner)
 - **여러 회사 × 여러 날짜 × 여러 보고서 유형**을 한 번에 처리
@@ -49,11 +51,11 @@ uv run dart-xbrl batch --job-file config/batch_jobs.yaml --with-note-tables
 }
 ```
 
-### 3️⃣ LLM 수익성 개선 포인트 메모
-- AI가 재무 데이터를 분석하여 **"수익성 개선 포인트"** 자동 생성
+### 3️⃣ LLM 메모 생성
+- AI가 재무 데이터를 분석하여 **"수익성 개선 포인트"**와 **"신용/차환 리스크 메모"**를 생성
 - 모든 주장에 **수치 근거 필수 첨부** (table_id 또는 계정 reference)
 - 과장/환각 방지를 위한 엄격한 검증 시스템
-- 투자 의사결정용 1-2페이지 요약 메모 출력
+- 투자 및 issuer/credit 검토용 1-2페이지 요약 메모 출력
 
 ```bash
 # LLM 메모 생성 포함 실행
@@ -82,15 +84,16 @@ uv run dart-xbrl batch --job-file config/batch_jobs.yaml --with-llm-memo
 
 ---
 
-## 📊 성능 지표 (KPI)
+## 📊 현재 상태
 
 | 지표 | 목표 | 실제 |
 |------|------|------|
-| 배치 완주율 | 95%+ | ✅ 100% (12-job 테스트) |
+| 배치 완주율 | 95%+ | ✅ 100% (12-job 샘플 검증) |
 | 테이블 파싱 정확도 | 95%+ | ✅ 검증 완료 |
 | 단위 변환 오류 | 0건 | ✅ 0건 |
 | LLM 메모 근거 누락 | 0건 | ✅ 0건 |
-| 테스트 통과 | 전체 | ✅ 59 passed |
+| 테스트 통과 | 전체 | ✅ 65 passed |
+| CI | 기본 회귀 | ✅ pytest + compileall |
 
 ---
 
@@ -116,7 +119,10 @@ uv run dart-xbrl batch --job-file config/batch_jobs.yaml --with-llm-memo
 │   ├── opendart.py               # OpenDART API 클라이언트
 │   ├── reporter.py               # 결과 저장
 │   └── models.py                 # 기본 데이터 모델
-├── tests/                        # 🆕 테스트 스위트 (59개 테스트)
+├── tests/                        # 테스트 스위트 (65개 테스트)
+├── docs/
+│   └── designs/
+│       └── credit-wedge.md       # credit/issuer use case 정리
 ├── reports/                      # 분석 결과 출력
 ├── data/                         # 다운로드 데이터
 └── README.md                     # 이 파일
@@ -134,12 +140,11 @@ uv run dart-xbrl batch --job-file config/batch_jobs.yaml --with-llm-memo
 ### 1. 설치
 
 ```bash
-# 저장소 클론
-git clone <repository-url>
-cd Dart_xbrl_FS_pipeline
-
 # 가상환경 및 의존성 설치
 uv sync
+
+# LLM 메모까지 사용하려면
+uv sync --extra llm
 ```
 
 ### 2. 환경 설정
@@ -150,6 +155,11 @@ cp .env.example .env
 
 # .env 파일에 API 키 설정
 # OPENDART_API_KEY=your_api_key_here
+# OPENAI_API_KEY=your_openai_api_key_here        # optional
+# ANTHROPIC_API_KEY=your_anthropic_api_key_here  # optional
+
+# 두 키가 모두 있으면 --llm-provider로 선택
+# 키를 하나만 두면 기본 auto 모드가 해당 provider를 사용
 ```
 
 ### 3. 실행 확인
@@ -170,6 +180,17 @@ uv run dart-xbrl batch --help
 
 ```bash
 uv run dart-xbrl --corp-name 하나마이크론 --date 2026-03-19 --report-type annual
+```
+
+### 추천 데모 경로
+
+가장 설득력 있는 사용법은 범용 요약보다 **credit/issuer 관점의 note table + memo 흐름**입니다.
+
+```bash
+uv run dart-xbrl batch --job-file config/my_batch.yaml \
+  --with-note-tables \
+  --with-llm-memo \
+  --max-workers 4
 ```
 
 ### 배치 분석 (신규 기능)
@@ -212,6 +233,12 @@ uv run dart-xbrl batch --job-file config/my_batch.yaml --with-note-tables
 # LLM 메모 생성 포함
 uv run dart-xbrl batch --job-file config/my_batch.yaml --with-llm-memo
 
+# OpenAI로 명시 실행
+uv run dart-xbrl batch --job-file config/my_batch.yaml --with-llm-memo --llm-provider openai
+
+# Anthropic으로 명시 실행
+uv run dart-xbrl batch --job-file config/my_batch.yaml --with-llm-memo --llm-provider anthropic
+
 # 모든 기능 활성화
 uv run dart-xbrl batch --job-file config/my_batch.yaml \
   --with-note-tables \
@@ -239,6 +266,15 @@ uv run dart-xbrl batch --job-file config/my_batch.yaml --retry-failed
 
 ### LLM 메모 출력 (--with-llm-memo)
 - `reports/<접수번호>_profitability_memo.md` - AI 분석 메모
+- `reports/<접수번호>_credit_memo.md` - 신용/차환 리스크 관점 메모
+
+선택 가능한 provider:
+- 기본값 `auto`: 설정된 키를 기준으로 사용 가능한 provider 선택
+- `--llm-provider openai`
+- `--llm-provider anthropic`
+
+### 실행 메타데이터
+- `reports/<접수번호>_run_manifest.json` - 실행 옵션, artifact 경로, warning, token usage
 
 ---
 
@@ -248,13 +284,16 @@ uv run dart-xbrl batch --job-file config/my_batch.yaml --retry-failed
 # 전체 테스트 실행
 uv run pytest
 
+# 개발 의존성 포함 동기화
+uv sync --extra dev
+
 # 특정 모듈 테스트
 uv run pytest tests/unit/test_batch_runner.py
 uv run pytest tests/unit/test_note_table_parser.py
 uv run pytest tests/unit/test_insight_writer.py
 
-# 커버리지 확인
-uv run pytest --cov=src --cov-report=html
+# 정적 확인
+uv run python -m compileall src tests
 ```
 
 ---
@@ -313,6 +352,8 @@ uv run dart-xbrl batch --job-file config/my_batch.yaml --debug
 - **빠른 시작 가이드**: [QUICK_start.md](./QUICK_start.md)
 - **PRD (제품 요구사항)**: [PRD.md](./PRD.md)
 - **로드맵**: [roadmap.md](./roadmap.md)
+- **Wedge 문서**: [docs/designs/credit-wedge.md](./docs/designs/credit-wedge.md)
+- **실행 handoff**: [docs/hl-dandi-handoff.md](./docs/hl-dandi-handoff.md)
 
 ---
 
