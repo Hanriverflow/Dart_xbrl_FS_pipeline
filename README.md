@@ -135,7 +135,7 @@ uv run dart-xbrl batch --job-file config/batch_jobs.yaml --with-llm-memo
 
 ```bash
 # 저장소 클론
-git clone <repository-url>
+git clone https://github.com/Hanriverflow/Dart_xbrl_FS_pipeline.git
 cd Dart_xbrl_FS_pipeline
 
 # 가상환경 및 의존성 설치
@@ -144,13 +144,13 @@ uv sync
 
 ### 2. 환경 설정
 
-```bash
-# .env 파일 생성
-cp .env.example .env
+저장소 루트에 `.env` 파일을 직접 만들고 아래 placeholder를 본인의 OpenDART API 키로 바꾸세요. `.env.example` 파일은 제공하지 않습니다.
 
-# .env 파일에 API 키 설정
-# OPENDART_API_KEY=your_api_key_here
+```dotenv
+OPENDART_API_KEY=replace_with_your_opendart_api_key
 ```
+
+`src/dart_xbrl_pipeline/config.py`의 `load_settings()`는 루트 `.env`를 읽으며, `opendart.py`는 `OPENDART_API_KEY` 환경변수를 사용합니다. 이미 설정한 환경변수를 사용할 수도 있습니다. `.env`는 `.gitignore`에 포함되어 있습니다. 실제 키나 `.env` 파일을 커밋하거나 로그에 출력하지 마세요.
 
 ### 3. 실행 확인
 
@@ -290,10 +290,7 @@ analysis:
 
 ### API 키 오류
 
-```bash
-# API 키 확인
-uv run python -c "from dart_xbrl_pipeline.config import load_settings; load_settings(); import os; print('API Key:', os.getenv('OPENDART_API_KEY')[:10] + '...' if os.getenv('OPENDART_API_KEY') else 'Not set')"
-```
+루트 `.env`의 `OPENDART_API_KEY`가 placeholder가 아닌 발급받은 값인지 로컬에서 확인하세요. 키 값이나 일부 문자열을 터미널, 이슈, 스크린샷에 출력하지 마세요. 기존 환경변수가 설정되어 있으면 `.env`보다 우선할 수 있습니다.
 
 ### 배치 실행 중단 후 재개
 
